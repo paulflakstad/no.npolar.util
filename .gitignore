@@ -1,3 +1,20 @@
+# NetBeans project files
+/nbproject/
+# Build files
+/build/
+/build.xml
+# Non-interesting stuff
+/src/conf/
+/src/Main.java
+/web/META-INF/
+/web/WEB-INF/
+/dist/
+/lib/
+/.gitignore~
+# Subversion files
+.svn/
+.svn/
+
 # Windows image file caches
 Thumbs.db
 ehthumbs.db
