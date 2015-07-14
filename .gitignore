@@ -10,7 +10,7 @@
 /web/WEB-INF/
 /dist/
 /lib/
-/.gitignore~
+*~
 # Subversion files
 .svn/
 .svn/
