@@ -138,7 +138,31 @@ public class ImageUtil {
     }
     
     /**
+     * Shorthand method: Quality = 100%, maxAbsoluteWidth = 100%, and 
+     * maxViewportWidth = 100%.
+     * <p>
+     * Optional class and crop ratio.
+     * 
+     * @param figureClass Class name to use, can be null.
+     * @param cropRatio The crop ratio. Must be given as "[width]:[height]", i.e.: "4:3", or a null value (indicating "don't crop"). Some typical ratios are offered by the CROP_RATIO_X static members of this class, for example {@link ImageUtil#CROP_RATIO_1_1}.
+     * @return
+     * @throws ImageAccessException 
+     */
+    public synchronized String getImage(String figureClass, String cropRatio) throws ImageAccessException {
+        int maxAbsWidth = 1200;
+        if (this.imageSize == SIZE_M)
+            maxAbsWidth = 600;
+        if (this.imageSize == SIZE_S)
+            maxAbsWidth = 400;
+        
+        return getImage(figureClass, cropRatio, 100, maxAbsWidth, DEFAULT_MAX_VP_WIDTH, "800px");
+    }
+    
+    
+    
+    /**
      * Shorthand method: No class, no cropping, 100% quality.
+     * 
      * @see ImageUtil#getImage(org.opencms.jsp.CmsJspActionElement, java.lang.String, java.lang.String, java.lang.String, int, int, int, int, java.lang.String) 
      * @return A ready-to-use figure element, complete with img (with srcset, sizes, src and alt attributes) and figcaption children.
      * @throws ImageAccessException 
@@ -194,10 +218,149 @@ public class ImageUtil {
         s += "</figure>";
         return s;
     }
+    /**
+     * Gets the image URI, with a width constraint, using the max width defined 
+     * in {@link ImageUtil#DEFAULT_MAX_WIDTH}.
+     * 
+     * @see ImageUtil#getWidthContrainedUri(org.opencms.jsp.CmsJspActionElement, java.lang.String, int) 
+     * @throws ImageAccessException
+     * @throws CmsException 
+     */
+    public synchronized String getWidthConstrainedUri() throws ImageAccessException, CmsException {
+        return this.getWidthConstrainedUri(DEFAULT_MAX_WIDTH);
+    }
+    /**
+     * Gets the image URI, with a width constraint.
+     * 
+     * @see ImageUtil#getWidthContrainedUri(org.opencms.jsp.CmsJspActionElement, java.lang.String, int) 
+     * @throws ImageAccessException
+     * @throws CmsException 
+     */
+    public synchronized String getWidthConstrainedUri(int maxWidth) throws ImageAccessException, CmsException {
+        return ImageUtil.getWidthConstrainedUri(cms, imagePath, maxWidth);
+    }
+    /**
+     * Gets an image URI, with a width constraint, using the max width defined 
+     * in {@link ImageUtil#DEFAULT_MAX_WIDTH}.
+     * 
+     * @see ImageUtil#getWidthContrainedUri(org.opencms.jsp.CmsJspActionElement, java.lang.String, int) 
+     * @throws ImageAccessException
+     * @throws CmsException 
+     */
+    public static synchronized String getWidthConstrainedUri(CmsJspActionElement cms, String imageUri) throws ImageAccessException, CmsException {
+        return getWidthConstrainedUri(cms, imageUri, DEFAULT_MAX_WIDTH);
+    }
+    
+    /**
+     * Get an image URI, with a width constraint.
+     * <p>
+     * If the given image is wider than the given max width, a URI to a 
+     * down-scaled version is returned. Otherwise, the given URI is returned.
+     * 
+     * @param cms An initialized action element.
+     * @param imageUri The URI to the image.
+     * @param maxWidth The max width.
+     * @return The URI to the given image, possibly down-scaled to the given max width.
+     * @throws ImageAccessException
+     * @throws CmsException 
+     */
+    public static synchronized String getWidthConstrainedUri(CmsJspActionElement cms, String imageUri, int maxWidth) throws ImageAccessException, CmsException {
+        CmsObject cmso = cms.getCmsObject();
+        
+        // Determine the width of the (original) image
+        int imageWidth = getWidth(cmso, imageUri);
+        
+        // If the (original) image width exceeds the given max width, create a 
+        // URI to a version scaled down to the given max width
+        if (imageWidth > maxWidth) {
+            CmsImageScaler scaler = new CmsImageScaler(cmso, cmso.readResource(imageUri));
+            scaler.setHeight(getRescaledHeight(cmso, imageUri, maxWidth));
+            scaler.setWidth(maxWidth);
+            scaler.setQuality(100);
+            scaler.setType(SCALE_TYPE_NOCROP);
+            imageUri = (String)CmsAgent.getTagAttributesAsMap(cms.img(imageUri, scaler.getReScaler(scaler), null)).get("src");
+        }
+        
+        return imageUri;
+    }
+    
+    /**
+     * Gets the width of the given image.
+     * 
+     * @param cmso An initialized CmsObject, needed to access the {@link CmsPropertyDefinition#PROPERTY_IMAGE_SIZE} property.
+     * @param imageUri The image URI.
+     * @return The width of the given image. A return value of 0 (zero) indicates an error.
+     */
+    public static int getWidth(CmsObject cmso, String imageUri) {
+        int imageWidth = 0;
+        try {
+            CmsImageScaler imageHandle = new CmsImageScaler(cmso, cmso.readResource(imageUri));
+            imageWidth = imageHandle.getWidth();
+        } catch (Exception e) {
+            // Log this?
+        }
+        return imageWidth;
+    }
+    
+    /**
+     * Gets a figure element, complete with caption, and ready for highslide 
+     * enlargement.
+     * 
+     * @see ImageUtil#getImage(org.opencms.jsp.CmsJspActionElement, java.lang.String, java.lang.String, java.lang.String, int, int, int, int, java.lang.String) 
+     * @return A ready-to-use figure element, complete with img (with srcset, sizes, src and alt attributes) and figcaption children.
+     * @throws ImageAccessException
+     */
+    /*public synchronized String getHighslideImage (String figureClass
+                                        , String cropRatio
+                                        , int quality
+                                        , int maxAbsoluteWidth
+                                        , int maxViewportRelativeWidth
+                                        , String linearBreakpoint) throws ImageAccessException, CmsException {
+        
+        this.cms = new CmsAgent(cms.getJspContext(), cms.getRequest(), cms.getResponse());
+        
+        String s = "<figure class=\"media" + (figureClass != null && !figureClass.isEmpty() ? " "+figureClass : "") + "\">";
+        s += "<a class=\"highslide\" href=\"" + cms.link(getWidthConstrainedUri(cms,imagePath)) + "\" onclick=\"return hs.expand(this);\">";
+        
+        // Call the static function, passing arguments from this instance
+        s += ImageUtil.getImage(this.cms
+                                , this.imagePath
+                                , this.imageAlt
+                                , cropRatio
+                                , maxAbsoluteWidth
+                                , maxViewportRelativeWidth
+                                , this.imageSize
+                                , quality
+                                , linearBreakpoint
+                                );
+        s += "</a>";
+        
+        if (!this.imageCaption.isEmpty() || !this.imageSource.isEmpty()) {
+            s += "<figcaption class=\"caption highslide-caption\">";
+            if (!this.imageCaption.isEmpty()) {
+                s += this.imageCaption;
+            }
+            if (!this.imageSource.isEmpty()) {
+                s += "<span class=\"credit\">";
+                        try {
+                            s += ((CmsAgent)cms).labelUnicode("label.pageelements." + this.imageType.toLowerCase());
+                        } catch (Exception e) {
+                            s += cms.label("label.pageelements." + this.imageType.toLowerCase());
+                        }
+                s += ": " + this.imageSource + "</span>";
+            }
+            s += "</figcaption>";
+        }
+        s += "</figure>";
+        
+        return s;
+    }
+    //*/
     
     /**
      * Calculates the rescaled height of an image, based on the new width and 
      * assuming the aspect ratio should be kept intact.
+     * 
      * @param cmso Initialized CMS object.
      * @param imagePath The path to the image.
      * @param rescaledWidth The new width.
@@ -241,6 +404,7 @@ public class ImageUtil {
      * <li>the 400px image, if the image will span max. 50%</li>
      * <li>the 800px image, if the image will span full-width</li>
      * </ul>
+     * 
      * @param cms Needed to access the image and the VFS. Mandatory.
      * @param imageUri The path to the image in the VFS. Mandatory.
      * @param alt The alternative text. Provide a null value to use the "Description" property, or "none" / "-" to leave it empty.
@@ -319,7 +483,7 @@ public class ImageUtil {
                                                 + ",q:" + quality
                                                 + "&amp;" + fp;
                 // Optimize the image URI for online?
-                if (cms.getRequestContext().getCurrentProject().isOnlineProject())
+                //if (cms.getRequestContext().getCurrentProject().isOnlineProject())
                     srcsetElement = cms.link(srcsetElement);
                 // Add the image uri to the srcset, along with the width descriptor
                 srcset.add(srcsetElement + " " + scaleWidth + "w");
@@ -353,7 +517,7 @@ public class ImageUtil {
                                 + ",q:" + quality
                                 + "&amp;" + fp;
         // Optimize the image URI for online?
-        if (cms.getRequestContext().getCurrentProject().isOnlineProject())
+        //if (cms.getRequestContext().getCurrentProject().isOnlineProject())
             srcFallback = cms.link(srcFallback);
         
         String sizes = "";
@@ -387,6 +551,7 @@ public class ImageUtil {
     
     /**
      * Constructs a string representation of the given srcset list.
+     * 
      * @param srcset The srcset list.
      * @return A string representation of the given srcset list.
      */
@@ -402,24 +567,66 @@ public class ImageUtil {
         }
         return s;
     }
-    
+    /**
+     * Convenience/shorthand method: Uses defaults for all non-given values.
+     * 
+     * @see ImageUtil#getImage(org.opencms.jsp.CmsJspActionElement, java.lang.String, java.lang.String, java.lang.String, int, int, int, int, java.lang.String) 
+     * @throws ImageAccessException 
+     */
     public static synchronized String getImage(CmsJspActionElement cms, String imageUri, String alt, int maxWidth, int size, int quality) throws ImageAccessException {
         return getImage(cms, imageUri, alt, CROP_RATIO_NO_CROP, maxWidth, DEFAULT_MAX_VP_WIDTH, size, quality, DEFAULT_BREAKPOINT);
     }
-    
+    /**
+     * Convenience/shorthand method: Uses defaults for all non-given values.
+     * 
+     * @see ImageUtil#getImage(org.opencms.jsp.CmsJspActionElement, java.lang.String, java.lang.String, java.lang.String, int, int, int, int, java.lang.String) 
+     * @throws ImageAccessException 
+     */
     public static synchronized String getImage(CmsJspActionElement cms, String imageUri, String alt, int maxWidth, int size) throws ImageAccessException {
         return getImage(cms, imageUri, alt, maxWidth, size, DEFAULT_QUALITY);
     }
+    /**
+     * Convenience/shorthand method: Uses defaults for all non-given values.
+     * 
+     * @see ImageUtil#getImage(org.opencms.jsp.CmsJspActionElement, java.lang.String, java.lang.String, java.lang.String, int, int, int, int, java.lang.String) 
+     * @throws ImageAccessException 
+     */
     public static synchronized String getImage(CmsJspActionElement cms, String imageUri, String alt, int size) throws ImageAccessException {
         return getImage(cms, imageUri, alt, DEFAULT_MAX_WIDTH, size);
     }
+    /**
+     * Convenience/shorthand method: Uses defaults for all non-given values.
+     * 
+     * @see ImageUtil#getImage(org.opencms.jsp.CmsJspActionElement, java.lang.String, java.lang.String, java.lang.String, int, int, int, int, java.lang.String) 
+     * @throws ImageAccessException 
+     */
     public static synchronized String getImage(CmsJspActionElement cms, String imageUri, String alt) throws ImageAccessException {
         return getImage(cms, imageUri, alt, DEFAULT_MAX_WIDTH);
     }
+    /**
+     * Convenience/shorthand method: Uses defaults for all non-given values.
+     * 
+     * @see ImageUtil#getImage(org.opencms.jsp.CmsJspActionElement, java.lang.String, java.lang.String, java.lang.String, int, int, int, int, java.lang.String) 
+     * @throws ImageAccessException 
+     */
     public static synchronized String getImage(CmsJspActionElement cms, String imageUri) throws ImageAccessException {
         return getImage(cms, imageUri, null);
     }
-    
+    /**
+     * Wraps the given content in a figure (with class="media") element.
+     * <p>
+     * This method can be used to wrap photos, videos, charts, etc. consistently.
+     * <p>
+     * The caption (if any) is wrapped in a figcaption element with 
+     * class="caption highslide-caption".
+     * 
+     * @param mediaElement The element to wrap, e.g. an img element (but can be anything).
+     * @param captionLede The caption lede, a short introductory bit intended to entice the reader to read the full caption.
+     * @param caption The caption.
+     * @param credit The credit (must include leading "Copyright: ", "Photo: ", etc. bits, if needed).
+     * @param mediaExtraClass Extra class(es) that should be assigned to the outer figure element (in addition to its native "media" class).
+     * @return 
+     */
     public static String getMediaWrapper(String mediaElement, String captionLede, String caption, String credit, String mediaExtraClass) {
         String s = "<figure class=\"media"; 
         if (hasContent(mediaExtraClass)) {
