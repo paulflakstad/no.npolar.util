@@ -5,6 +5,8 @@ import java.util.Arrays;
 import java.util.Iterator;
 import java.util.List;
 import no.npolar.util.exception.ImageAccessException;
+import org.apache.commons.logging.Log;
+import org.apache.commons.logging.LogFactory;
 import org.opencms.file.CmsObject;
 import org.opencms.file.CmsPropertyDefinition;
 import org.opencms.file.CmsResourceFilter;
@@ -82,6 +84,10 @@ public class ImageUtil {
     public static final String OCMS_EL_NAME_IMAGE_SIZE = "Size";    
     /** The name of the element that holds the image float setting, as defined in /system/modules/no.npolar.common.pageelements/schemas/image.xsd */
     public static final String OCMS_EL_NAME_IMAGE_FLOAT = "Float";
+    
+    
+    /** The logger. */
+    private static final Log LOG = LogFactory.getLog(ImageUtil.class);
     
     private CmsJspActionElement cms = null;
     private CmsObject cmso = null;
@@ -358,26 +364,61 @@ public class ImageUtil {
     //*/
     
     /**
-     * Calculates the rescaled height of an image, based on the new width and 
-     * assuming the aspect ratio should be kept intact.
+     * Calculates the rescaled height of an image, based on the new width. 
+     * <p>
+     * If the given crop ratio is <code>null</code>, the aspect ratio is kept 
+     * intact. Otherwise, if a crop ratio is given (e.g. <code>"16:9"</code>), 
+     * the new height is based on that ratio.
      * 
      * @param cmso Initialized CMS object.
      * @param imagePath The path to the image.
      * @param rescaledWidth The new width.
+     * @param cropRatio The crop ratio – pass <code>null</code> to indicate no cropping.
      * @return The new height.
+     * @throws ImageAccessException 
      */
-    public static int getRescaledHeight(CmsObject cmso, String imagePath, int rescaledWidth) throws ImageAccessException {
+    public static int getRescaledHeight(CmsObject cmso, String imagePath, int rescaledWidth, String cropRatio) throws ImageAccessException {
         CmsImageScaler image = null;
         try {
             image = new CmsImageScaler(cmso, cmso.readResource(imagePath));
         } catch (Exception e) {
             throw new ImageAccessException("Error reading details from image '" + imagePath + "': " + e.getMessage());
         }
-        double newHeight = 0.0;
-        double ratio = 0.0;
-        ratio = (double)image.getWidth() / rescaledWidth; // IMPORTANT! Cast one to double, or ratio will get an integer value..!!!
-        newHeight = (double)image.getHeight() / ratio;
-        return (int)newHeight;
+        float newHeight = 0;
+        float ratio = 0;
+        if (cropRatio != null) {
+            try {
+                String[] ratioParts = cropRatio.split(":");
+                ratio = Float.valueOf(ratioParts[1].trim()) / Float.valueOf(ratioParts[0].trim());
+                newHeight = (float)rescaledWidth * ratio;
+            } catch (Exception e) {
+                // just keep the 0 (zero) value, and the code below will be the fallback
+                if (LOG.isErrorEnabled()) {
+                    LOG.error("Image crop ratio not formatted correctly (should be 'width:height'): " + cropRatio + ". Fallback to no cropping.");
+                }
+            }
+        }
+        if (ratio == 0) {
+            ratio = (float)image.getWidth() / rescaledWidth; // IMPORTANT! Cast one to float, or ratio will get an integer value..!!!
+            newHeight = (float)image.getHeight() / ratio;
+        } 
+        
+        return Math.round((float)newHeight);
+    }
+    
+    /**
+     * Calculates the rescaled height of an image, based on the new width and 
+     * assuming the aspect ratio should be kept intact (no cropping).
+     * 
+     * @param cmso Initialized CMS object.
+     * @param imagePath The path to the image.
+     * @param rescaledWidth The new width.
+     * @return The new height.
+     * @see #getRescaledHeight(org.opencms.file.CmsObject, java.lang.String, int, java.lang.String) 
+     * @throws ImageAccessException 
+     */
+    public static int getRescaledHeight(CmsObject cmso, String imagePath, int rescaledWidth) throws ImageAccessException {
+        return getRescaledHeight(cmso, imagePath, rescaledWidth, null);
     }
     
     /**
@@ -478,7 +519,7 @@ public class ImageUtil {
                 String srcsetElement = imageUri + (isParameterizedImageUri ? "&amp;" : "?")
                                                 + "__scale="
                                                 + "w:" + scaleWidth
-                                                + ",h:" + (getRescaledHeight(cmso, imageUri, scaleWidth))
+                                                + ",h:" + (getRescaledHeight(cmso, imageUri, scaleWidth, cropRatio))
                                                 + ",t:" + scaleType
                                                 + ",q:" + quality
                                                 + "&amp;" + fp;
@@ -512,7 +553,7 @@ public class ImageUtil {
         String srcFallback = imageUri + (isParameterizedImageUri ? "&amp;" : "?")
                                 + "__scale="
                                 + "w:" + maxAbsoluteWidth
-                                + ",h:" + (getRescaledHeight(cmso, imageUri, maxAbsoluteWidth))
+                                + ",h:" + (getRescaledHeight(cmso, imageUri, maxAbsoluteWidth, cropRatio))
                                 + ",t:" + scaleType
                                 + ",q:" + quality
                                 + "&amp;" + fp;
