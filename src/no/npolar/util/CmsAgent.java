@@ -25,6 +25,8 @@ import javax.servlet.jsp.JspException;
 import javax.servlet.http.HttpServletRequest;
 import javax.servlet.http.HttpServletResponse;
 import javax.servlet.jsp.PageContext;
+import org.apache.commons.logging.Log;
+import org.apache.commons.logging.LogFactory;
 import org.opencms.file.CmsResource;
 import org.opencms.file.CmsResourceFilter;
 import org.opencms.file.CmsObject;
@@ -65,6 +67,9 @@ public class CmsAgent extends CmsJspXmlContentBean {
     
     /** Parameter name for fingerprint parameters. */
     public static final String PARAM_NAME_FINGERPRINT = "fingerprint";
+    
+    /** The logger. */
+    private static final Log LOG = LogFactory.getLog(CmsAgent.class);
     
     /**
      * Empty constructor, required for every JavaBean
@@ -1707,5 +1712,84 @@ public class CmsAgent extends CmsJspXmlContentBean {
             }
         }
         return paramStr;
+    }
+    
+    /**
+     * Redirects to the given location using the given type.
+     * <p>
+     * The type must be either 301 (permanent) or 302 (temporary).
+     * <p>
+     * <em>This method is a substitute for the core method 
+     * {@link org.opencms.util.CmsRequestUtil#redirectPermanently(org.opencms.jsp.CmsJspActionElement, java.lang.String), 
+     * which is erroneously implemented, causing it to issue temporary (302) 
+     * redirects instead of the expected permanent (301) redirects.</em>
+     * 
+     * @param location The redirect target location. Local paths should be site-relative (starting with a slash).
+     * @param type The type of redirect. Pass 301 for permanent, 302 for temporary.
+     */
+    public void sendRedirect(String location, int type) {
+        String target = location;
+        boolean targetIsLocal = false;
+        String redirLocation = null;
+        
+        if (target.startsWith("//")) {
+            // Absolute and scheme-agnostic target location
+            target = this.getRequest().getScheme() + ":" + target;
+        } else if (!target.substring(0,7).contains(":")) {
+            // Relative target location
+            // (No "http:", "https:", "ftp:", etc. in the first part)
+            targetIsLocal = true;
+            
+            // Ensure the target location is site-relative 
+            // (Ideally, this should never happen but who knows...)
+            if (!target.startsWith("/")) {
+                // Assume the target location is folder-relative
+                if (target.startsWith("./")) {
+                    target = target.substring(2);
+                }
+                target = this.getRequestContext().getFolderUri() + target;
+            }
+        } else {
+            // Assume absolute target location, e.g. starting with "http://xxxx"
+        }
+        
+        if (targetIsLocal) { // Relative path
+            try {
+                redirLocation = this.link(target);
+            } catch (Exception e) {
+                if (LOG.isErrorEnabled()) {
+                    LOG.error("Cannot link to " + target + " in preparation of redirect.", e);
+                }
+            }
+        } else { // Absolute path
+            redirLocation = target;
+        }
+
+        //
+        // Execute the redirect
+        //
+        switch (type) {
+            case 301:
+                this.setStatus(HttpServletResponse.SC_MOVED_PERMANENTLY); // does work
+                //cms.getResponse().setStatus(HttpServletResponse.SC_MOVED_PERMANENTLY); // does NOT work
+                this.getResponse().setHeader("Location", redirLocation);
+                this.getResponse().setHeader("Connection", "close"); // Maybe not necessary?
+                //CmsRequestUtil.redirectPermanently(cms, redirLocation); // does NOT work - uses HttpServletResponse#sendRedirect
+                break;
+            case 302:
+                try {
+                    this.getResponse().sendRedirect(redirLocation);
+                } catch (Exception e) {
+                    if (LOG.isErrorEnabled()) {
+                        LOG.error("Unable to issue temporary redirect to " + redirLocation + ".", e);
+                    }
+                }
+                break;
+            default:
+                if (LOG.isErrorEnabled()) {
+                    LOG.error("Error issuing redirect to " + redirLocation + ": Expected a type of 301 or 302, but got " + type + ".");
+                }
+                break;
+        }
     }
 }
