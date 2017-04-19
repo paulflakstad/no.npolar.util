@@ -103,7 +103,6 @@ public class ImageUtil {
     
     
     public ImageUtil() {
-        
     }
     
     public ImageUtil(CmsJspActionElement cms, String imagePath) throws CmsException {
@@ -114,12 +113,17 @@ public class ImageUtil {
     }
     
     /**
-     * Convenience constructor specially adapted to the "standard" image element, 
-     * which is part of the no.npolar.common.pageelements module.
+     * Convenience constructor specifically adapted to the "standard" image 
+     * element, which is part of the <code>no.npolar.common.pageelements</code> 
+     * module.
+     * <p>
+     * See <code>/system/modules/no.npolar.common.pageelements/schemas/image.xsd</code>
+     * <p>
+     * ToDo: Improve this "standard model" to accept the "auto" keyword for alt 
+     * text, credit, etc., to indicate "get this from the image file".
      * 
      * @param cms
      * @param imageContainer
-     * @see /system/modules/no.npolar.common.pageelements/schemas/image.xsd
      * @throws CmsException 
      */
     public ImageUtil(CmsJspXmlContentBean cms, I_CmsXmlContentContainer imageContainer) throws CmsException {
