@@ -30,13 +30,17 @@ import org.apache.commons.logging.LogFactory;
 import org.opencms.file.CmsResource;
 import org.opencms.file.CmsResourceFilter;
 import org.opencms.file.CmsObject;
+import org.opencms.file.CmsProperty;
 import org.opencms.file.CmsPropertyDefinition;
 import org.opencms.json.JSONArray;
 import org.opencms.json.JSONException;
 import org.opencms.json.JSONObject;
 import org.opencms.jsp.I_CmsXmlContentContainer;
+import org.opencms.mail.CmsSimpleMail;
 import org.opencms.main.CmsException;
 import org.opencms.main.OpenCms;
+import org.opencms.security.CmsRole;
+import org.opencms.util.CmsHtmlExtractor;
 import org.opencms.util.CmsRequestUtil;
 import org.opencms.util.CmsUriSplitter;
 
@@ -1729,39 +1733,35 @@ public class CmsAgent extends CmsJspXmlContentBean {
      */
     public void sendRedirect(String location, int type) {
         String target = location;
-        boolean targetIsLocal = false;
         String redirLocation = null;
         
-        if (target.startsWith("//")) {
-            // Absolute and scheme-agnostic target location
+        if (target.matches("^//[a-zA-Z0-9]{1}.*")) {
+            // Absolute target location, but without scheme
             target = this.getRequest().getScheme() + ":" + target;
-        } else if (!target.substring(0,7).contains(":")) {
-            // Relative target location
-            // (No "http:", "https:", "ftp:", etc. in the first part)
-            targetIsLocal = true;
-            
-            // Ensure the target location is site-relative 
-            // (Ideally, this should never happen but who knows...)
-            if (!target.startsWith("/")) {
-                // Assume the target location is folder-relative
-                if (target.startsWith("./")) {
-                    target = target.substring(2);
-                }
-                target = this.getRequestContext().getFolderUri() + target;
-            }
-        } else {
-            // Assume absolute target location, e.g. starting with "http://xxxx"
-        }
-        
-        if (targetIsLocal) { // Relative path
+            redirLocation = target;
+        } else if (target.matches("^(http(s?)|ftp)://[a-zA-Z0-9].*")) {
+            // Absolute target location, with scheme
+            redirLocation = target;
+        } else if (target.matches("^(\\.?)/[a-zA-Z1-9]{1}.*") 
+                || target.matches("^[a-zA-Z0-9_]{1}.*")) {
+            // Relative path
             try {
-                redirLocation = this.link(target);
+                // Prepend the parent tree's path?
+                if (!target.startsWith("/")) {
+                    // Assume the target location is folder-relative
+                    if (target.startsWith("./")) {
+                        target = target.substring(2);
+                    }
+                    target = this.getRequestContext().getFolderUri() + target;
+                }
+                redirLocation = OpenCms.getLinkManager().getOnlineLink(getCmsObject(), target);
             } catch (Exception e) {
                 if (LOG.isErrorEnabled()) {
-                    LOG.error("Cannot link to " + target + " in preparation of redirect.", e);
+                    LOG.error("Cannot link to '" + target + "' (originally '" + location + "') in preparation of redirect.", e);
                 }
             }
-        } else { // Absolute path
+        } else { 
+            // Default
             redirLocation = target;
         }
 
