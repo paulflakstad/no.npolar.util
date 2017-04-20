@@ -1901,4 +1901,100 @@ public class CmsAgent extends CmsJspXmlContentBean {
         
         return title;
     }
+    
+    /**
+     * Standard routines that are typically run by all master templates, before
+     * producing any output.
+     * <p>
+     * ToDo:
+     * <ul>
+     *   <li>Split separate routines into separate methods</li>
+     *   <li>TEST!</li>
+     * </ul>
+     * 
+     * @param onlineScheme
+     * @param onlineDomainName 
+     */
+    public void doInitialChecks(String onlineScheme, String onlineDomainName) throws CmsException {
+        HttpServletRequest request = getRequest();
+        boolean loggedInUser = OpenCms.getRoleManager().hasRole(this.getCmsObject(), CmsRole.WORKPLACE_USER);
+        String requestFileUri = getRequestContext().getUri();
+
+        // Redirect HTTPS to HTTP for any non-logged-in user
+        if (!loggedInUser && request.isSecure()) {
+            String redirAbsPath = "http://" + request.getServerName() + link(requestFileUri);
+            String qs = request.getQueryString();
+            if (qs != null && !qs.isEmpty()) {
+                redirAbsPath += "?" + qs;
+            }
+            //out.println("<!-- redirect path is '" + redirAbsPath + "' -->");
+            //CmsRequestUtil.redirectPermanently(cms, redirAbsPath); // Flawed, sends 302
+            sendRedirect(redirAbsPath, HttpServletResponse.SC_MOVED_PERMANENTLY);
+            return;
+        }
+
+        // Prevent exposing backend/alternative domain names
+        if (!loggedInUser && !request.getServerName().equals(onlineDomainName)) {
+            String redirAbsPath = onlineScheme + "://" + onlineDomainName + link(requestFileUri);
+            String qs = request.getQueryString();
+            if (qs != null && !qs.isEmpty()) {
+                redirAbsPath += "?" + qs;
+            }
+            //out.println("<!-- redirect path is '" + redirAbsPath + "' -->");
+            //CmsRequestUtil.redirectPermanently(cms, redirAbsPath); // Bad method, sends 302
+            sendRedirect(redirAbsPath, HttpServletResponse.SC_MOVED_PERMANENTLY);
+            return;
+        }
+        
+        CmsObject cmso = getCmsObject();
+        
+        // -----------------------------------------------------------------------------
+        //  Redirect somewhere?
+        // -----------------------------------------------------------------------------
+        //
+        // This is used for example on Norwegian siblings of events with content in 
+        // English only. We use it so that the event can appear also in listings on the
+        // Norwegian section (because a Norwegian sibling exists), but at the same time
+        // only the English version will ever be accessible (because the Norwegian 
+        // version redirects to it).
+        //
+        // This redirect option can help handling event navigation and registration
+        // forms (if such pages exists), and it is also good for SEO (because there will  
+        // be no duplicate content).
+        //
+        // It also helps meet Norwegian accessibility requirements.
+        //
+        // IMPORTANT: Setting the "redirect.permanent" property carelessly can 
+        // cause A LOT of damage to the site. USE WITH CARE!
+        // -----------------------------------------------------------------------------
+        //try {
+            CmsProperty redirPermProp = cmso.readPropertyObject(requestFileUri, "redirect.permanent", true);
+            if (!redirPermProp.isNullProperty()) {
+                String redirPermPath = redirPermProp.getValue("");
+
+                if (cmso.existsResource(redirPermPath)) { // Don't redirect to non-existing resources
+                    String redirAbsPath = request.getScheme() + "://" + request.getServerName() + link(redirPermPath);
+                    String qs = request.getQueryString();
+                    if (qs != null && !qs.isEmpty()) {
+                        redirAbsPath += "?" + qs;
+                    }
+                    //CmsRequestUtil.redirectPermanently(cms, redirAbsPath); // Bad method, sends 302
+                    sendRedirect(redirAbsPath, HttpServletResponse.SC_MOVED_PERMANENTLY);
+                    return;
+                } else {
+                    try {
+                        // Attempt to redirect to non-existing resource: Send error message.
+                        CmsSimpleMail errorMail = new CmsSimpleMail();
+                        errorMail.addTo("web" + "@" + "npolar.no");
+                        errorMail.setFrom("no-reply" + "@" + "npolar.no");
+                        errorMail.setSubject("Error on NPI website");
+                        errorMail.setMsg("The resource " + OpenCms.getLinkManager().getOnlineLink(cmso, requestFileUri) 
+                                + " attempted to permanently redirect to " + OpenCms.getLinkManager().getOnlineLink(cmso, redirPermPath) 
+                                + ", which does not exist. Please fix this ASAP.");
+                        errorMail.send();
+                    } catch (Exception e) {}
+                }
+            }
+        //} catch (Exception e) {}
+    }
 }
