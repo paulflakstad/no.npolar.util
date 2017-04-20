@@ -1792,4 +1792,113 @@ public class CmsAgent extends CmsJspXmlContentBean {
                 break;
         }
     }
+    
+    /**
+     * Gets the content for the title tag, with site name appended and ready to
+     * use.
+     * <p>
+     * Checks for the existence of a request attribute "title". If present, it
+     * will override the "Title" property.
+     * <p>
+     * Also injects a title add-on, if found on the "Title.addon" property.
+     * <p>
+     * ToDo:
+     * <ul>
+     *   <li>Split separate routines into separate methods</li>
+     *   <li>TEST!</li>
+     * </ul>
+     * 
+     * @param siteHomeFolder The folder of the site's home page; typically "/", "/en/", "/no/", etc.
+     * @param siteName The name of the site, will be appended at the end (or, for the home page, it will become the title).
+     * @return The title tag content.
+     */
+    public String getTitleTag(String siteHomeFolder, String siteName) {
+        CmsObject cmso = getCmsObject();
+        HttpServletRequest request = getRequest();
+        String requestFileUri = getRequestContext().getUri();
+        Integer requestFileTypeId = 0;
+        try { 
+            requestFileTypeId = cmso.readResource(requestFileUri).getTypeId(); 
+        } catch (CmsException e) {
+        }
+        
+        String title = property("Title", requestFileUri, "");
+        // Handle case:
+        // - Title set as request attribute
+        if (request.getAttribute("title") != null) {
+            try {
+                String reqAttrTitle = (String)request.getAttribute("title");
+                //out.println("<!-- set title to '" + reqAttrTitle + "' (found request attribute) -->");
+                if (!reqAttrTitle.isEmpty()) {
+                    title = reqAttrTitle;
+                }
+            } catch (Exception e) {
+                // The title found as request attribute was not of type String
+            }
+        }
+
+        // Handle case:
+        // - the current request URI is a resource of type "person" AND
+        // - the resource has a title on the format "lastname, firstname"
+        try {
+            if (requestFileTypeId == OpenCms.getResourceManager().getResourceType("person").getTypeId()) {
+                if (title != null && !title.isEmpty() && title.indexOf(",") > -1) {
+                    String[] titleParts = title.split(","); // [Flakstad][ Paul-Inge]
+                    if (titleParts.length == 2) {
+                        title = titleParts[1].trim() + " " + titleParts[0].trim();
+                    }
+                }
+            }
+        } catch (org.opencms.loader.CmsLoaderException unknownResTypeException) {
+            // Resource type "person" not installed
+        }
+
+        // Handle case: 
+        // - the current request URI points to a folder
+        // - AND the folder has no title 
+        // - AND the folder's index file has a title (this is the displayed file, so show that title)
+        //if (title.isEmpty() && (requestFileUri.endsWith("/") || requestFileUri.endsWith("/index.html"))) {
+        if (title != null && title.isEmpty()) {
+            if (requestFileUri.endsWith("/")) {
+                try {
+                    title = cmso.readPropertyObject(requestFileUri.concat("index.html"), "Title", false).getValue("No title");
+                } catch (Exception e) {
+                }
+            }
+        }
+
+        //boolean isFrontPage = false;
+        //try { isFrontPage = title.equals(siteName); } 
+        //catch (Exception e) {}
+
+        // Insert the "title add-on". 
+        // For example: A big event has multiple pages. In order to make the 
+        // titles of these pages unique, while at the same time maintaining a 
+        // human-friendly page heading (i.e. contextual and not-too-long), the 
+        // event's name can be used as a title add-on. This way, a page with 
+        // main heading (a.k.a. "title") "Programme" would not indentify itself 
+        // (in the title tag) as simply "Programme - NPI", but rather 
+        // "Programme - <event name> - NPI".
+        String titleAddOn = property("Title.addon", "search", "");
+        if (titleAddOn != null && !titleAddOn.equalsIgnoreCase("none") && !titleAddOn.isEmpty()) {
+            title = title.concat(" - ").concat(titleAddOn);
+        }
+
+        
+        boolean homePage = requestFileUri.equals(siteHomeFolder) 
+                || requestFileUri.equals(siteHomeFolder + "index.html")
+                || requestFileUri.equals(siteHomeFolder + "index.jsp");
+        if (!homePage) {
+            title = title.concat(" - ").concat(siteName);
+        } else {
+            title = siteName;
+        }
+
+        try {
+            title = CmsHtmlExtractor.extractText(title, "utf-8");
+        } catch (Exception e) {
+        }
+        
+        return title;
+    }
 }
